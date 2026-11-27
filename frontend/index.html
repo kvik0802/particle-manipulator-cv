@@ -1,0 +1,1015 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Particle Orb — Hand-Tracked CV</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box }
+    :root { --accent: #a78bfa; --accent2: #f472b6; --glass: rgba(10,10,20,0.55); --glass-border: rgba(255,255,255,0.08); --glass-hover: rgba(255,255,255,0.12); }
+    body { overflow: hidden; background: #000; font-family: 'Space Grotesk', sans-serif; color: #fff }
+    canvas#scene { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 1 }
+    #top-nav { position: fixed; top: 20px; left: 50%; transform: translateX(-62%); z-index: 10; display: flex; gap: 6px; align-items: center; background: var(--glass); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); border: 1px solid var(--glass-border); border-radius: 100px; padding: 6px 8px; box-shadow: 0 8px 40px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.05); }
+    .shape-btn { display: flex; align-items: center; gap: 5px; background: transparent; border: none; color: rgba(255,255,255,0.5); cursor: pointer; font-family: 'Space Grotesk', sans-serif; font-size: 12px; font-weight: 500; letter-spacing: .3px; padding: 6px 12px; border-radius: 100px; transition: all .3s cubic-bezier(0.34,1.56,0.64,1); position: relative; white-space: nowrap; }
+    .shape-btn .ico { font-size: 14px; line-height: 1; filter: drop-shadow(0 0 4px rgba(255,255,255,0.2)) }
+    .shape-btn:hover { color: #fff; background: var(--glass-hover) }
+    .shape-btn.active { color: #fff; background: rgba(167,139,250,0.25); border: 1px solid rgba(167,139,250,0.4); box-shadow: 0 0 14px rgba(167,139,250,0.3), inset 0 0 10px rgba(167,139,250,0.1) }
+    .nav-divider { width: 1px; height: 18px; background: var(--glass-border); flex-shrink: 0 }
+    #bottom-bar { position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%); z-index: 10; display: flex; flex-direction: column; align-items: center; gap: 10px; width: min(540px, calc(100vw - 32px)); }
+    #morph-form { display: flex; gap: 0; width: 100%; background: var(--glass); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); border: 1px solid var(--glass-border); border-radius: 14px; box-shadow: 0 8px 40px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.05); overflow: hidden; }
+    #text-input { background: transparent; border: none; outline: none; color: #fff; font-family: 'Space Grotesk', sans-serif; font-size: 14px; font-weight: 400; flex: 1; padding: 12px 16px; letter-spacing: .3px; min-width: 0; }
+    #text-input::placeholder { color: rgba(255,255,255,0.2) }
+    #morph-btn { background: linear-gradient(135deg, rgba(167,139,250,0.8), rgba(244,114,182,0.8)); border: none; border-left: 1px solid rgba(255,255,255,0.08); color: #fff; font-family: 'Space Grotesk', sans-serif; font-weight: 600; font-size: 11px; padding: 0 20px; cursor: pointer; letter-spacing: 1.5px; text-transform: uppercase; transition: all .2s; flex-shrink: 0; }
+    #morph-btn:hover { filter: brightness(1.25); background: linear-gradient(135deg, rgba(167,139,250,1), rgba(244,114,182,1)) }
+    #morph-btn:active { transform: scale(0.97) }
+    #status-bar { display: flex; align-items: center; gap: 10px; font-family: 'Space Mono', monospace; font-size: 10px; letter-spacing: 1.2px; text-transform: uppercase; color: rgba(255,255,255,0.3); transition: color .4s; }
+    #status-bar.morphing { color: rgba(167,139,250,0.9) }
+    .s-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; flex-shrink: 0 }
+    #status-bar.morphing .s-dot { animation: sdot 1.2s infinite ease-in-out }
+    @keyframes sdot { 0%,100% { transform: scale(1); opacity: 1 } 50% { transform: scale(1.8); opacity: .5 } }
+    #status-bar.morphing .s-sep { opacity: 0 }
+    .s-sep { opacity: .3 }
+    .s-count { color: rgba(255,255,255,0.5); font-weight: 700 }
+    #progress-wrap { position: fixed; top: 0; left: 0; width: 100%; height: 2px; z-index: 20; opacity: 0; transition: opacity .3s; }
+    #progress-wrap.active { opacity: 1 }
+    #progress-bar { height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent), var(--accent2)); transition: width .1s linear; box-shadow: 0 0 12px var(--accent); }
+    #corner-info { position: fixed; top: 20px; left: 20px; z-index: 10; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+    .ci-label { font-family: 'Space Mono', monospace; font-size: 9px; letter-spacing: 1.5px; text-transform: uppercase; color: rgba(255,255,255,0.2) }
+    .ci-val { font-size: 11px; font-weight: 500; color: rgba(255,255,255,0.4) }
+    #tooltip { position: fixed; bottom: 110px; left: 50%; transform: translateX(-50%); font-size: 11px; color: rgba(255,255,255,0.3); letter-spacing: .5px; pointer-events: none; opacity: 1; transition: opacity 1s; font-family: 'Space Mono', monospace; }
+    #tooltip.hidden { opacity: 0 }
+    .lil-gui { --background-color: rgba(8,8,18,0.85) !important; --text-color: rgba(255,255,255,0.75) !important; --title-background-color: rgba(167,139,250,0.15) !important; --title-text-color: #a78bfa !important; --widget-color: rgba(255,255,255,0.06) !important; --hover-color: rgba(167,139,250,0.2) !important; --focus-color: rgba(167,139,250,0.35) !important; --number-color: #67e8f9 !important; --string-color: #86efac !important; --font-family: 'Space Mono', monospace !important; --font-size: 11px !important; --input-font-size: 11px !important; --border-radius: 10px !important; backdrop-filter: blur(20px) !important; -webkit-backdrop-filter: blur(20px) !important; border: 1px solid rgba(167,139,250,0.15) !important; box-shadow: 0 8px 40px rgba(0,0,0,0.8) !important; }
+    .lil-gui .title { letter-spacing: 1px; text-transform: uppercase; font-size: 10px !important }
+    .lil-gui .controller.folder .title { font-size: 10px !important; letter-spacing: .8px }
+
+    /* CV UI */
+    #cv-panel { position: fixed; top: 20px; right: 20px; z-index: 15; width: 300px; background: var(--glass); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); border: 1px solid var(--glass-border); border-radius: 14px; padding: 12px; font-family: 'Space Mono', monospace; font-size: 11px; box-shadow: 0 8px 40px rgba(0,0,0,0.7); }
+    #cv-panel h3 { font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--accent); margin-bottom: 8px; }
+    #cv-panel .row { display: flex; justify-content: space-between; margin: 4px 0; color: rgba(255,255,255,0.7); }
+    #cv-panel .val { color: #67e8f9; font-weight: 700; }
+    #cv-panel button { background: rgba(167,139,250,0.2); border: 1px solid rgba(167,139,250,0.4); color: #fff; padding: 6px 10px; border-radius: 8px; cursor: pointer; font-family: 'Space Grotesk', sans-serif; font-size: 11px; margin: 4px 2px; }
+    #cv-panel button:hover { background: rgba(167,139,250,0.35); }
+    #cv-panel button.active { background: rgba(244,114,182,0.35); border-color: rgba(244,114,182,0.6); }
+    #cv-panel select { background: rgba(0,0,0,0.4); color: #fff; border: 1px solid var(--glass-border); border-radius: 6px; padding: 4px; font-family: 'Space Mono', monospace; font-size: 10px; }
+    #landmark-canvas { position: fixed; bottom: 20px; right: 20px; z-index: 15; width: 200px; height: 150px; border: 1px solid var(--glass-border); border-radius: 10px; background: rgba(0,0,0,0.6); }
+    #webcam { display: none; }
+    #enable-cam-btn { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); z-index: 30; background: linear-gradient(135deg, rgba(167,139,250,0.9), rgba(244,114,182,0.9)); border: none; color: #fff; font-family: 'Space Grotesk', sans-serif; font-weight: 600; font-size: 16px; padding: 16px 32px; border-radius: 14px; cursor: pointer; box-shadow: 0 8px 40px rgba(167,139,250,0.4); }
+    #enable-cam-btn:hover { filter: brightness(1.15); }
+    #cam-status { position: fixed; top: 70px; left: 50%; transform: translateX(-50%); z-index: 20; font-family: 'Space Mono', monospace; font-size: 11px; color: rgba(255,255,255,0.6); background: var(--glass); padding: 6px 12px; border-radius: 8px; }
+    #cheat-sheet { position: fixed; bottom: 20px; left: 20px; z-index: 15; width: 260px; background: var(--glass); backdrop-filter: blur(24px); border: 1px solid var(--glass-border); border-radius: 14px; padding: 10px; font-family: 'Space Mono', monospace; font-size: 10px; max-height: 40vh; overflow-y: auto; }
+    #cheat-sheet h4 { color: var(--accent); margin-bottom: 6px; letter-spacing: 1px; text-transform: uppercase; font-size: 10px; }
+    #cheat-sheet .item { display: flex; justify-content: space-between; margin: 2px 0; color: rgba(255,255,255,0.7); }
+    #cheat-sheet .g { color: #f472b6; }
+    #gesture-label { position: fixed; top: 90px; left: 50%; transform: translateX(-50%); z-index: 20; font-family: 'Space Grotesk', sans-serif; font-size: 18px; font-weight: 600; color: #fff; text-shadow: 0 0 20px var(--accent); pointer-events: none; }
+    #gesture-to-text { position: fixed; top: 130px; left: 50%; transform: translateX(-50%); z-index: 20; font-family: 'Space Mono', monospace; font-size: 12px; color: #86efac; pointer-events: none; }
+    #eval-panel { position: fixed; left: 20px; top: 120px; z-index: 15; width: 320px; background: var(--glass); backdrop-filter: blur(24px); border: 1px solid var(--glass-border); border-radius: 14px; padding: 10px; font-family: 'Space Mono', monospace; font-size: 10px; max-height: 60vh; overflow-y: auto; display: none; }
+    #eval-panel h4 { color: var(--accent); margin-bottom: 6px; }
+    #eval-panel table { width: 100%; border-collapse: collapse; }
+    #eval-panel td, #eval-panel th { border: 1px solid var(--glass-border); padding: 2px 4px; text-align: center; }
+  </style>
+</head>
+<body>
+  <canvas id="scene"></canvas>
+  <video id="webcam" autoplay playsinline></video>
+  <canvas id="landmark-canvas" width="200" height="150"></canvas>
+
+  <div id="progress-wrap"><div id="progress-bar"></div></div>
+
+  <nav id="top-nav">
+    <button class="shape-btn active" data-shape="love"><span class="ico">❤️</span>Love</button>
+    <button class="shape-btn" data-shape="cube"><span class="ico">🧊</span>Cube</button>
+    <button class="shape-btn" data-shape="star"><span class="ico">⭐</span>Star</button>
+    <button class="shape-btn" data-shape="circle"><span class="ico">🔵</span>Sphere</button>
+    <button class="shape-btn" data-shape="flower"><span class="ico">🌸</span>Flower</button>
+    <div class="nav-divider"></div>
+    <button class="shape-btn" data-shape="galaxy"><span class="ico">🌌</span>Galaxy</button>
+    <button class="shape-btn" data-shape="cone"><span class="ico">▲</span>Cone</button>
+    <button class="shape-btn" data-shape="ring"><span class="ico">⟳</span>Ring</button>
+  </nav>
+
+  <div id="corner-info">
+    <span class="ci-label">Particles</span>
+    <span class="ci-val" id="ci-particles">150,000</span>
+    <span class="ci-label" style="margin-top:6px">FPS</span>
+    <span class="ci-val" id="ci-fps">—</span>
+    <span class="ci-label" style="margin-top:6px">Mode</span>
+    <span class="ci-val" id="ci-mode">Mouse</span>
+  </div>
+
+  <div id="bottom-bar">
+    <form id="morph-form">
+      <input type="text" id="text-input" placeholder="Type anything — hello, wave, moon, peace…" autocomplete="off" spellcheck="false" />
+      <button type="submit" id="morph-btn">Morph</button>
+    </form>
+    <div id="status-bar">
+      <div class="s-dot"></div>
+      <span id="status-text">System Stable</span>
+    </div>
+  </div>
+
+  <div id="tooltip">drag to rotate · scroll to zoom · click to burst · enable camera for gestures</div>
+
+  <button id="enable-cam-btn">📷 Enable Camera & Hand Tracking</button>
+  <div id="cam-status" style="display:none"></div>
+  <div id="gesture-label"></div>
+  <div id="gesture-to-text"></div>
+
+  <div id="cv-panel">
+    <h3>Hand Tracking HUD</h3>
+    <div class="row"><span>Gesture</span><span class="val" id="hud-gesture">—</span></div>
+    <div class="row"><span>Confidence</span><span class="val" id="hud-conf">—</span></div>
+    <div class="row"><span>FPS (render)</span><span class="val" id="hud-fps">—</span></div>
+    <div class="row"><span>Det. FPS</span><span class="val" id="hud-dfps">—</span></div>
+    <div class="row"><span>Latency ms</span><span class="val" id="hud-lat">—</span></div>
+    <div class="row"><span>Hands</span><span class="val" id="hud-hands">0</span></div>
+    <div class="row"><span>Pinch</span><span class="val" id="hud-pinch">—</span></div>
+    <div style="margin-top:8px">
+      <button id="btn-toggle-control">Toggle Mouse/Gesture</button>
+      <button id="btn-record">Record Sample</button>
+      <button id="btn-eval">Evaluation Panel</button>
+      <button id="btn-g2t">Gesture→Text Mode</button>
+    </div>
+    <div style="margin-top:6px">
+      <label>Record label:</label>
+      <select id="record-label">
+        <option value="fist">Fist</option>
+        <option value="open">Open Palm</option>
+        <option value="one">1 Finger</option>
+        <option value="two">2 Fingers</option>
+        <option value="three">3 Fingers</option>
+        <option value="four">4 Fingers</option>
+        <option value="five">5 Fingers</option>
+        <option value="thumbs_up">Thumbs Up</option>
+        <option value="peace">Peace</option>
+        <option value="point">Point</option>
+      </select>
+    </div>
+    <div style="margin-top:6px; font-size:9px; color:rgba(255,255,255,0.4)" id="model-status">Model: rule-based only</div>
+  </div>
+
+  <div id="cheat-sheet">
+    <h4>Gesture Cheat Sheet</h4>
+    <div class="item"><span class="g">✊ Fist</span><span>Burst / Heart</span></div>
+    <div class="item"><span class="g">☝️ 1 finger</span><span>Cube</span></div>
+    <div class="item"><span class="g">✌️ 2 fingers</span><span>Star</span></div>
+    <div class="item"><span class="g">3 fingers</span><span>Sphere</span></div>
+    <div class="item"><span class="g">4 fingers</span><span>Flower</span></div>
+    <div class="item"><span class="g">🖐️ 5 / Open</span><span>Galaxy</span></div>
+    <div class="item"><span class="g">👍 Thumbs up</span><span>Cone</span></div>
+    <div class="item"><span class="g">✌️ Peace (MP)</span><span>Ring</span></div>
+    <div class="item"><span class="g">Pinch</span><span>Zoom + size</span></div>
+    <div class="item"><span class="g">Swipe L/R</span><span>Cycle shapes</span></div>
+    <div class="item"><span class="g">Circle motion</span><span>Rotate cloud</span></div>
+    <div class="item"><span class="g">2 hands</span><span>Scale + physics</span></div>
+  </div>
+
+  <div id="eval-panel">
+    <h4>Evaluation</h4>
+    <div style="margin-bottom:6px">
+      <label>Target gesture: </label>
+      <select id="eval-target">
+        <option>fist</option><option>open</option><option>one</option><option>two</option><option>three</option><option>four</option><option>five</option><option>thumbs_up</option><option>peace</option><option>point</option>
+      </select>
+      <button id="eval-start">Start Trial</button>
+      <button id="eval-export">Export CSV</button>
+      <button id="eval-clear">Clear</button>
+    </div>
+    <div id="eval-status">Idle</div>
+    <table id="eval-table"><thead><tr><th>Gesture</th><th>N</th><th>Correct</th><th>Acc%</th></tr></thead><tbody></tbody></table>
+    <div id="eval-cm" style="margin-top:8px; font-size:9px"></div>
+  </div>
+
+  <script type="importmap">
+  {"imports":{
+    "three":"https://cdn.jsdelivr.net/npm/three@0.164.1/build/three.module.js",
+    "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.164.1/examples/jsm/",
+    "lil-gui":"https://cdn.jsdelivr.net/npm/lil-gui@0.19.2/dist/lil-gui.esm.js",
+    "@mediapipe/tasks-vision":"https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs"
+  }}
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import GUI from 'lil-gui';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+    import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+    import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+    import { AfterimagePass } from 'three/addons/postprocessing/AfterimagePass.js';
+    import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+    import { HandLandmarker, GestureRecognizer, FilesetResolver } from '@mediapipe/tasks-vision';
+
+    // ---------- One-Euro filter ----------
+    class OneEuro {
+      constructor(minCutoff=1.0, beta=0.0, dCutoff=1.0){ this.minCutoff=minCutoff; this.beta=beta; this.dCutoff=dCutoff; this.xPrev=null; this.dxPrev=0; this.tPrev=null; }
+      alpha(cutoff, dt){ const tau=1/(2*Math.PI*cutoff); return 1/(1+tau/dt); }
+      filter(t, x){
+        if(this.tPrev===null){ this.tPrev=t; this.xPrev=x; return x; }
+        const dt=Math.max(1e-6, t-this.tPrev);
+        const dx=(x-this.xPrev)/dt;
+        const edx=this.dxPrev + this.alpha(this.dCutoff,dt)*(dx-this.dxPrev);
+        const cutoff=this.minCutoff + this.beta*Math.abs(edx);
+        const res=this.xPrev + this.alpha(cutoff,dt)*(x-this.xPrev);
+        this.xPrev=res; this.dxPrev=edx; this.tPrev=t;
+        return res;
+      }
+      reset(){ this.xPrev=null; this.dxPrev=0; this.tPrev=null; }
+    }
+
+    const N = 150000, DURATION = 3.2;
+    const canvas = document.getElementById('scene');
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    renderer.toneMapping = THREE.ReinhardToneMapping;
+    renderer.toneMappingExposure = 1.2;
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x000005);
+
+    // STARFIELD
+    (() => {
+      const S = 8000, sp = new Float32Array(S * 3), ss = new Float32Array(S), sa = new Float32Array(S);
+      for (let i = 0; i < S; i++) {
+        const th = Math.random() * Math.PI * 2, ph = Math.acos(2 * Math.random() - 1), r = 80 + Math.random() * 400;
+        sp[i * 3] = r * Math.sin(ph) * Math.cos(th); sp[i * 3 + 1] = r * Math.sin(ph) * Math.sin(th); sp[i * 3 + 2] = r * Math.cos(ph);
+        ss[i] = Math.pow(Math.random(), 3) * 1.8 + 0.1; sa[i] = 0.3 + Math.random() * 0.7;
+      }
+      const sg = new THREE.BufferGeometry();
+      sg.setAttribute('position', new THREE.BufferAttribute(sp, 3));
+      sg.setAttribute('size', new THREE.BufferAttribute(ss, 1));
+      sg.setAttribute('alpha', new THREE.BufferAttribute(sa, 1));
+      const sm = new THREE.ShaderMaterial({
+        uniforms: { uTime: { value: 0 } },
+        vertexShader: `attribute float size;attribute float alpha;varying float vAlpha;void main(){vAlpha=alpha;vec4 mv=modelViewMatrix*vec4(position,1.);gl_Position=projectionMatrix*mv;gl_PointSize=size*(300./-mv.z);}`,
+        fragmentShader: `varying float vAlpha;void main(){vec2 uv=gl_PointCoord-.5;float d=length(uv);if(d>.5)discard;float b=smoothstep(.5,.0,d);gl_FragColor=vec4(1.,1.,1.,vAlpha*b);}`,
+        transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
+      });
+      scene.add(new THREE.Points(sg, sm));
+      window._starMat = sm;
+    })();
+
+    const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 1000);
+    camera.position.set(0, 0, 11);
+    const controls = new OrbitControls(camera, canvas);
+    controls.enableDamping = true; controls.autoRotate = true; controls.autoRotateSpeed = 0.3;
+    controls.minDistance = 4; controls.maxDistance = 60;
+    controls.addEventListener('start', () => { controls.autoRotate = false; clearTimeout(window._art) });
+    controls.addEventListener('end', () => { window._art = setTimeout(() => controls.autoRotate = true, 4000) });
+
+    const composer = new EffectComposer(renderer);
+    composer.addPass(new RenderPass(scene, camera));
+    const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.5, 0.9, 0.35);
+    composer.addPass(bloom);
+    const afterimg = new AfterimagePass();
+    afterimg.uniforms.damp.value = 0.92;
+    composer.addPass(afterimg);
+    composer.addPass(new OutputPass());
+
+    const mouse2D = new THREE.Vector2(), mouse3D = new THREE.Vector3();
+    const raycaster = new THREE.Raycaster(), iPlane = new THREE.Plane();
+    window.addEventListener('mousemove', e => {
+      if (controlMode !== 'gesture' || !gestureMouseActive) {
+        mouse2D.x = (e.clientX / innerWidth) * 2 - 1;
+        mouse2D.y = -(e.clientY / innerHeight) * 2 + 1;
+      }
+    });
+    window.addEventListener('mousedown', () => {
+      if (window._bursting || document.activeElement === document.getElementById('text-input')) return;
+      window._bursting = true;
+      mat.uniforms.uBurstStrength.value = 1;
+      const fade = () => {
+        mat.uniforms.uBurstStrength.value *= 0.88;
+        if (mat.uniforms.uBurstStrength.value > 0.01) requestAnimationFrame(fade);
+        else { mat.uniforms.uBurstStrength.value = 0; window._bursting = false; }
+      };
+      setTimeout(fade, 120);
+    });
+
+    setTimeout(() => document.getElementById('tooltip').classList.add('hidden'), 5000);
+
+    const SHAPE_COLORS = { love: 0xff2255, cube: 0x00d4ff, star: 0xffcc00, circle: 0x00d4ff, flower: 0xff66bb, galaxy: 0xaa66ff, cone: 0x44ddff, ring: 0xff9944 };
+
+    const vert = `
+uniform float uTime; uniform float uProgress; uniform vec3 uMouse3D; uniform float uInteraction; uniform float uParticleSize;
+attribute vec3 aStart; attribute vec3 aEnd; attribute float aDelay; attribute float aSeed;
+varying vec3 vColor; varying float vAlpha; uniform vec3 uTargetColor; uniform float uBurstStrength; uniform float uScale;
+float spring(float t){ float s=2.5553;float t1=t-1.; return t1*t1*((s+1.)*t1+s)+1.; }
+float h3(vec3 p){return fract(sin(dot(p,vec3(127.1,311.7,74.7)))*43758.5453);}
+float sn(vec3 p){ vec3 i=floor(p),f=fract(p),u=f*f*(3.-2.*f); return mix(mix(mix(h3(i),h3(i+vec3(1,0,0)),u.x),mix(h3(i+vec3(0,1,0)),h3(i+vec3(1,1,0)),u.x),u.y), mix(mix(h3(i+vec3(0,0,1)),h3(i+vec3(1,0,1)),u.x),mix(h3(i+vec3(0,1,1)),h3(i+vec3(1,1,1)),u.x),u.y),u.z); }
+void main(){
+  float stg=aDelay*.3;
+  float p=spring(clamp((uProgress-stg)/(1.-stg),0.,1.));
+  vec3 pos=mix(aStart,aEnd,p);
+  float arc=sin(p*3.14159);
+  vec3 np=pos*.4+vec3(uTime*.12);
+  pos+=vec3((sn(np)-.5)*2.,(sn(np+vec3(5.2,1.3,2.8))-.5)*2.,(sn(np+vec3(9.7,3.1,6.4))-.5)*2.)*arc*0.9;
+  float idle=1.-smoothstep(0.,.3,uProgress)+smoothstep(.8,1.,uProgress);
+  float t1=uTime*.55,t2=uTime*.31,t3=uTime*.19;
+  pos.y+=(sin(t1+aSeed*2.39)*.18+sin(t2+aSeed*5.1)*.06)*idle;
+  pos.x+=(cos(t2+aSeed*1.73)*.10+cos(t3+aSeed*3.7)*.04)*idle;
+  pos.z+=(sin(t3+aSeed*4.21)*.07)*idle;
+  pos.x+=sin(uTime*.08)*1.2; pos.y+=cos(uTime*.05)*.7+sin(uTime*.13)*.5;
+  pos *= uScale;
+  vec3 toM=pos-uMouse3D; float dist=length(toM);
+  if(dist<5.){ float force=pow(1.-dist/5.,2.); pos+=normalize(toM)*force*(uInteraction*4.+uBurstStrength*15.); }
+  vec4 mv=modelViewMatrix*vec4(pos,1.); gl_Position=projectionMatrix*mv;
+  float twinkle=sin(uTime*(1.5+aSeed*2.)+aSeed*10.)*.3+.7;
+  gl_PointSize=clamp(uParticleSize*(380./-mv.z),.6,8.)*twinkle;
+  float distC=length(aEnd)/6.,core=1.-clamp(distC,0.,1.); float glossy=pow(core,2.5)*.2;
+  vColor=mix(uTargetColor,vec3(1.),glossy); vColor+=(sin(aSeed*10.+uTime)*.05); vColor*=1.3;
+  vAlpha=smoothstep(60.,2.,-mv.z)*(.6+core*.4);
+}`;
+    const frag = `varying vec3 vColor;varying float vAlpha; void main(){ vec2 uv=gl_PointCoord-.5;float d=length(uv);if(d>.5)discard; float core=smoothstep(.5,0.,d); float spec=exp(-d*15.)*.8; float halo=exp(-d*4.)*.25; float intensity=core*.4+spec+halo; gl_FragColor=vec4(vColor*intensity,vAlpha*intensity); }`;
+
+    function sphere(n, r = 4.2) { const p = new Float32Array(n * 3), ph = Math.PI * (3 - Math.sqrt(5)); for (let i = 0; i < n; i++) { const y = 1 - (i / (n - 1)) * 2, rr = Math.sqrt(1 - y * y), t = ph * i; p[i * 3] = Math.cos(t) * rr * r; p[i * 3 + 1] = y * r; p[i * 3 + 2] = Math.sin(t) * rr * r; } return p; }
+    function heart(n) { const p = new Float32Array(n * 3), s = .26; for (let i = 0; i < n; i++) { const t = Math.random() * Math.PI * 2, r = Math.random(); const x = 16 * Math.pow(Math.sin(t), 3), y = 13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t); p[i * 3] = x * s * r; p[i * 3 + 1] = y * s * r + 1; p[i * 3 + 2] = (Math.random() - .5) * 3 * r; } return p; }
+    function cube(n) { const p = new Float32Array(n * 3), S = 3.5, ed = [[-1,-1,-1,1,-1,-1],[-1,-1,-1,-1,1,-1],[-1,-1,-1,-1,-1,1],[1,1,1,-1,1,1],[1,1,1,1,-1,1],[1,1,1,1,1,-1],[-1,1,-1,1,1,-1],[-1,1,-1,-1,1,1],[1,-1,-1,1,1,-1],[1,-1,-1,1,-1,1],[-1,-1,1,1,-1,1],[-1,-1,1,-1,1,1]]; for (let i = 0; i < n; i++) { const e = ed[Math.floor(Math.random() * ed.length)], t = Math.random(); p[i * 3] = (e[0] + (e[3]-e[0])*t)*S + (Math.random()-.5)*.04; p[i * 3 + 1] = (e[1] + (e[4]-e[1])*t)*S + (Math.random()-.5)*.04; p[i * 3 + 2] = (e[2] + (e[5]-e[2])*t)*S + (Math.random()-.5)*.04; } return p; }
+    function star(n) { const p = new Float32Array(n * 3), oR = 4.5, iR = 1.8, pts = 5; for (let i = 0; i < n; i++) { const sp = Math.floor(Math.random() * pts), oa = (sp / pts) * Math.PI * 2 - Math.PI / 2, ia1 = ((sp - .5) / pts) * Math.PI * 2 - Math.PI / 2, ia2 = ((sp + .5) / pts) * Math.PI * 2 - Math.PI / 2; const tx = Math.cos(oa) * oR, ty = Math.sin(oa) * oR, i1x = Math.cos(ia1) * iR, i1y = Math.sin(ia1) * iR, i2x = Math.cos(ia2) * iR, i2y = Math.sin(ia2) * iR; let u = Math.random(), v = Math.random(); if (u + v > 1) { u = 1 - u; v = 1 - v; } const w = 1 - u - v; p[i * 3] = tx * w + i1x * u + i2x * v; p[i * 3 + 1] = ty * w + i1y * u + i2y * v; p[i * 3 + 2] = (Math.random() - .5) * .8; } return p; }
+    function flower(n) { const p = new Float32Array(n * 3), sc = 4; for (let i = 0; i < n; i++) { const a = Math.random() * Math.PI * 2, ps = Math.abs(Math.cos(6 * a * .5)), r = sc * (.15 + .85 * ps) * Math.sqrt(Math.random()), h = Math.sin(ps * Math.PI) * 1.4 * Math.random(); p[i * 3] = Math.cos(a) * r; p[i * 3 + 1] = h; p[i * 3 + 2] = Math.sin(a) * r; } return p; }
+    function galaxy(n) { const p = new Float32Array(n * 3); const arms = 4; for (let i = 0; i < n; i++) { const arm = Math.floor(Math.random() * arms); const r = Math.pow(Math.random(), 0.5) * 7; const spin = r * 1.4; const angle = (arm / arms) * Math.PI * 2 + spin; const spread = 0.3 + r * .15; p[i * 3] = Math.cos(angle) * r + (Math.random() - .5) * spread; p[i * 3 + 1] = (Math.random() - .5) * (0.3 + r * .05); p[i * 3 + 2] = Math.sin(angle) * r + (Math.random() - .5) * spread; } return p; }
+    function cone(n) { const p = new Float32Array(n * 3); for (let i = 0; i < n; i++) { const h = (Math.random() - .2) * 9; const r = Math.max(0, 0.1 + (h + 1.8) * 0.55) * Math.pow(Math.random(), 0.4); const angle = Math.random() * Math.PI * 2 + h * 1.5; p[i * 3] = Math.cos(angle) * r; p[i * 3 + 1] = h; p[i * 3 + 2] = Math.sin(angle) * r; } return p; }
+    function ring(n) { const p = new Float32Array(n * 3); for (let i = 0; i < n; i++) { const angle = Math.random() * Math.PI * 2; const ringR = 4.2 + Math.random() * 1.4 - 0.7; const tilt = (Math.random() - .5) * .5; p[i * 3] = Math.sin(angle) * ringR; p[i * 3 + 1] = Math.sin(angle) * ringR * tilt + (Math.random() - .5) * .3; p[i * 3 + 2] = Math.cos(angle) * ringR; } return p; }
+    function cloud(n) { const p = new Float32Array(n * 3); for (let i = 0; i < n; i++) { const t = Math.random() * Math.PI * 2, ph = Math.acos(2 * Math.random() - 1), r = Math.cbrt(Math.random()) * 10; p[i * 3] = r * Math.sin(ph) * Math.cos(t); p[i * 3 + 1] = r * Math.sin(ph) * Math.sin(t); p[i * 3 + 2] = r * Math.cos(ph); } return p; }
+    function textPts(word, n) { const cv = document.createElement('canvas'), cx = cv.getContext('2d', { willReadFrequently: true }); cv.width = 1024; cv.height = 512; let fs = 220; cx.font = `bold ${fs}px "Space Grotesk",Arial,sans-serif`; while (cx.measureText(word.toUpperCase()).width > 960 && fs > 30) { fs -= 10; cx.font = `bold ${fs}px "Space Grotesk",Arial,sans-serif`; } cx.fillStyle = '#fff'; cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.fillText(word.toUpperCase(), 512, 256); const d = cx.getImageData(0, 0, 1024, 512).data, px = []; for (let y = 0; y < 512; y += 2) for (let x = 0; x < 1024; x += 2) if (d[(y * 1024 + x) * 4 + 3] > 120) px.push(x, y); if (px.length < 10) return sphere(n); const p = new Float32Array(n * 3); for (let i = 0; i < n; i++) { const pi = Math.floor(Math.random() * (px.length / 2)) * 2; p[i * 3] = ((px[pi] / 1024) - .5) * 20; p[i * 3 + 1] = -((px[pi + 1] / 512) - .5) * 10; p[i * 3 + 2] = (Math.random() - .5) * 1.5; } return p; }
+
+    const SYMS = { love: heart, cube, star, circle: sphere, flower, galaxy, cone, ring };
+    function getTarget(w) { const k = w.toLowerCase().trim(); return SYMS[k] ? SYMS[k](N) : k.length ? textPts(k, N) : cloud(N); }
+
+    const geo = new THREE.BufferGeometry();
+    const sPos = cloud(N), ePos = sPos.slice();
+    const delays = new Float32Array(N), seeds = new Float32Array(N);
+    for (let i = 0; i < N; i++) { delays[i] = Math.random(); seeds[i] = Math.random() * 1000; }
+    geo.setAttribute('aStart', new THREE.BufferAttribute(sPos, 3));
+    geo.setAttribute('aEnd', new THREE.BufferAttribute(ePos, 3));
+    geo.setAttribute('aDelay', new THREE.BufferAttribute(delays, 1));
+    geo.setAttribute('aSeed', new THREE.BufferAttribute(seeds, 1));
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(N * 3), 3));
+
+    const mat = new THREE.ShaderMaterial({
+      uniforms: { uTime: { value: 0 }, uProgress: { value: 1 }, uMouse3D: { value: new THREE.Vector3() }, uInteraction: { value: 0.5 }, uParticleSize: { value: 2.2 }, uTargetColor: { value: new THREE.Color(0x00d4ff) }, uBurstStrength: { value: 0 }, uScale: { value: 1.0 } },
+      vertexShader: vert, fragmentShader: frag, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
+    });
+    scene.add(new THREE.Points(geo, mat));
+
+    const guiParams = { autoOptimize: true, toggleFullscreen() { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen(); }, resetCamera() { controls.reset(); controls.autoRotate = true; }, autoRotate: true, rotateSpeed: 0.3, orbColor: '#00d4ff' };
+    let orbCtrl;
+    const gui = new GUI({ title: 'Controls' });
+    gui.add(guiParams, 'resetCamera').name('⟳ Reset Camera');
+    const cfm = gui.addFolder('Colors');
+    orbCtrl = cfm.addColor(guiParams, 'orbColor').name('Orb Core').onChange(v => mat.uniforms.uTargetColor.value.set(v));
+    const pf = gui.addFolder('Performance');
+    pf.add(guiParams, 'autoOptimize').name('Auto-Optimize (LOD)');
+    const bf = gui.addFolder('Bloom');
+    bf.add(bloom, 'strength', 0, 2, .01).name('Strength');
+    bf.add(bloom, 'radius', 0, 1, .01).name('Radius');
+    bf.add(bloom, 'threshold', 0, 1, .01).name('Threshold');
+    const tf = gui.addFolder('Trails');
+    tf.add(afterimg.uniforms.damp, 'value', 0.5, 0.99, .001).name('Persistence');
+    const phf = gui.addFolder('Physics');
+    phf.add(mat.uniforms.uInteraction, 'value', -2, 2, .01).name('Interaction Strength');
+    const vf = gui.addFolder('Visuals');
+    vf.add(mat.uniforms.uParticleSize, 'value', 0.5, 5, .1).name('Particle Size');
+    vf.add(renderer, 'toneMappingExposure', 0, 2, .01).name('Exposure');
+    const cf = gui.addFolder('Camera');
+    cf.add(guiParams, 'autoRotate').name('Auto-Rotate').onChange(v => { controls.autoRotate = v; });
+    cf.add(guiParams, 'rotateSpeed', 0.1, 3, .05).name('Rotate Speed').onChange(v => { controls.autoRotateSpeed = v; });
+
+    let morphing = false, morphStart = 0, morphLabel = '';
+    const statusEl = document.getElementById('status-bar');
+    const statusTextEl = document.getElementById('status-text');
+    const progressWrap = document.getElementById('progress-wrap');
+    const progressBar = document.getElementById('progress-bar');
+    function spring(t) { const s = 2.5553, t1 = t - 1; return t1 * t1 * ((s + 1) * t1 + s) + 1; }
+    function morphTo(word) {
+      const k = word.toLowerCase().trim();
+      document.querySelectorAll('.shape-btn').forEach(b => { b.classList.toggle('active', b.dataset.shape === k); });
+      if (SHAPE_COLORS[k] !== undefined) { mat.uniforms.uTargetColor.value.set(SHAPE_COLORS[k]); guiParams.orbColor = '#' + mat.uniforms.uTargetColor.value.getHexString(); if (typeof orbCtrl !== 'undefined' && orbCtrl) orbCtrl.updateDisplay(); }
+      else { mat.uniforms.uTargetColor.value.set(guiParams.orbColor); }
+      bloom.strength = 0.5;
+      const target = getTarget(word);
+      const sa = geo.attributes.aStart, ea = geo.attributes.aEnd;
+      const cp = mat.uniforms.uProgress.value;
+      for (let i = 0; i < N; i++) { const ix = i * 3, stg = delays[i] * .3, rp = Math.max(0, Math.min(1, (cp - stg) / (1 - stg))), p = spring(rp); sa.array[ix] = sa.array[ix] + (ea.array[ix] - sa.array[ix]) * p; sa.array[ix+1] = sa.array[ix+1] + (ea.array[ix+1] - sa.array[ix+1]) * p; sa.array[ix+2] = sa.array[ix+2] + (ea.array[ix+2] - sa.array[ix+2]) * p; ea.array[ix] = target[ix]; ea.array[ix+1] = target[ix+1]; ea.array[ix+2] = target[ix+2]; }
+      sa.needsUpdate = true; ea.needsUpdate = true;
+      mat.uniforms.uProgress.value = 0;
+      morphing = true; morphStart = performance.now() / 1000; morphLabel = word.toUpperCase();
+      statusTextEl.textContent = `Morphing → ${morphLabel}`;
+      statusEl.classList.add('morphing'); progressWrap.classList.add('active');
+    }
+
+    // ---------- CV STATE ----------
+    let controlMode = 'mouse'; // 'mouse' | 'gesture'
+    let gestureMouseActive = false;
+    let cameraReady = false;
+    let handLandmarker = null, gestureRecognizer = null;
+    const video = document.getElementById('webcam');
+    const landmarkCanvas = document.getElementById('landmark-canvas');
+    const lctx = landmarkCanvas.getContext('2d');
+    const camStatus = document.getElementById('cam-status');
+
+    // smoothing: one euro per landmark coordinate
+    const filters = []; // [hand][point][axis]
+    function getFilter(h, p, a) {
+      if (!filters[h]) filters[h] = [];
+      if (!filters[h][p]) filters[h][p] = [new OneEuro(1.0,0.05,1.0), new OneEuro(1.0,0.05,1.0), new OneEuro(1.0,0.05,1.0)];
+      return filters[h][p][a];
+    }
+    function resetFilters(){ filters.length = 0; }
+
+    // gesture state
+    let lastGesture = null;
+    let gestureHoldCount = 0;
+    const HOLD_FRAMES = 5;
+    let lastShapeChange = 0;
+    const COOLDOWN = 500;
+    let lastFingerCount = -1;
+    let swipeHistory = [];
+    let circleHistory = [];
+    let gestureToTextMode = false;
+    let spelledWord = '';
+    const signToChar = { one:'A', two:'B', three:'C', four:'D', five:'E', fist:'F', open:'G', thumbs_up:'H', peace:'I', point:'J' };
+
+    // trained model
+    let trainedModel = null;
+    (async () => {
+      try {
+        const res = await fetch('model.json');
+        if (res.ok) { trainedModel = await res.json(); document.getElementById('model-status').textContent = 'Model: trained MLP loaded'; }
+      } catch (e) {}
+    })();
+
+    function normalizeLandmarks(lm) {
+      const wrist = lm[0];
+      const mid = lm[9];
+      const scale = Math.hypot(mid.x-wrist.x, mid.y-wrist.y, mid.z-wrist.z) || 1;
+      const out = [];
+      for (let i = 0; i < lm.length; i++) {
+        out.push((lm[i].x - wrist.x)/scale, (lm[i].y - wrist.y)/scale, (lm[i].z - wrist.z)/scale);
+      }
+      return out;
+    }
+    function mlpPredict(features) {
+      if (!trainedModel) return null;
+      const m = trainedModel;
+      // standardize
+      const x = features.map((v,i) => (v - m.mean[i]) / (m.std[i] || 1));
+      let a = x;
+      for (let l = 0; l < m.weights.length; l++) {
+        const W = m.weights[l], b = m.biases[l];
+        const out = new Array(b.length).fill(0);
+        for (let j = 0; j < b.length; j++) {
+          let s = b[j];
+          for (let i = 0; i < a.length; i++) s += a[i]*W[j][i]; // W[j] row
+          out[j] = (l === m.weights.length-1) ? s : Math.max(0, s); // relu hidden, linear out
+        }
+        a = out;
+      }
+      // softmax
+      const max = Math.max(...a);
+      const exps = a.map(v => Math.exp(v-max));
+      const sum = exps.reduce((s,v)=>s+v,0);
+      const probs = exps.map(v=>v/sum);
+      const idx = probs.indexOf(Math.max(...probs));
+      return { label: m.labels[idx], conf: probs[idx], probs };
+    }
+
+    // finger counting
+    function countFingers(lm, handedness) {
+      let count = 0;
+      const thumbTip = lm[4], thumbIp = lm[3];
+      if (handedness === 'Right') { if (thumbTip.x < thumbIp.x) count++; }
+      else { if (thumbTip.x > thumbIp.x) count++; }
+      if (lm[8].y < lm[6].y) count++;
+      if (lm[12].y < lm[10].y) count++;
+      if (lm[16].y < lm[14].y) count++;
+      if (lm[20].y < lm[18].y) count++;
+      return count;
+    }
+    function isFist(lm) {
+      // all tips below pips
+      return lm[8].y > lm[6].y && lm[12].y > lm[10].y && lm[16].y > lm[14].y && lm[20].y > lm[18].y;
+    }
+    function pinchDist(lm) {
+      return Math.hypot(lm[4].x - lm[8].x, lm[4].y - lm[8].y, lm[4].z - lm[8].z);
+    }
+
+    const SHAPES_LIST = ['love','cube','star','circle','flower','galaxy','cone','ring'];
+    let shapeIndex = 0;
+
+    function setGestureLabel(text) {
+      document.getElementById('gesture-label').textContent = text;
+    }
+
+    // debounce + cooldown shape change
+    function tryShapeChange(shape, reason) {
+      const now = performance.now();
+      if (now - lastShapeChange < COOLDOWN) return false;
+      lastShapeChange = now;
+      morphTo(shape);
+      return true;
+    }
+
+    function processHands(results, t) {
+      const hands = results.landmarks || [];
+      document.getElementById('hud-hands').textContent = hands.length;
+      if (hands.length === 0) {
+        setGestureLabel('No hand detected');
+        document.getElementById('hud-gesture').textContent = 'none';
+        document.getElementById('hud-conf').textContent = '—';
+        return;
+      }
+      // smooth
+      const smoothed = hands.map((hand, hi) => hand.map((pt, pi) => {
+        const x = getFilter(hi, pi, 0).filter(t, pt.x);
+        const y = getFilter(hi, pi, 1).filter(t, pt.y);
+        const z = getFilter(hi, pi, 2).filter(t, pt.z);
+        return { x, y, z };
+      }));
+
+      // draw landmarks preview
+      lctx.clearRect(0,0,landmarkCanvas.width,landmarkCanvas.height);
+      lctx.fillStyle = '#000'; lctx.fillRect(0,0,landmarkCanvas.width,landmarkCanvas.height);
+      for (const hand of smoothed) {
+        lctx.strokeStyle = '#a78bfa'; lctx.lineWidth = 1;
+        // connections
+        const conns = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[0,9],[9,10],[10,11],[11,12],[0,13],[13,14],[14,15],[15,16],[0,17],[17,18],[18,19],[19,20],[5,9],[9,13],[13,17]];
+        for (const [a,b] of conns) {
+          lctx.beginPath();
+          lctx.moveTo(hand[a].x*landmarkCanvas.width, hand[a].y*landmarkCanvas.height);
+          lctx.lineTo(hand[b].x*landmarkCanvas.width, hand[b].y*landmarkCanvas.height);
+          lctx.stroke();
+        }
+        for (const pt of hand) {
+          lctx.fillStyle = '#f472b6';
+          lctx.beginPath();
+          lctx.arc(pt.x*landmarkCanvas.width, pt.y*landmarkCanvas.height, 2, 0, Math.PI*2);
+          lctx.fill();
+        }
+      }
+
+      const handednesses = results.handednesses || [];
+      // primary hand (first)
+      const h0 = smoothed[0];
+      const hd0 = (handednesses[0] && handednesses[0][0]) ? handednesses[0][0].categoryName : 'Right';
+      const fc0 = countFingers(h0, hd0);
+      const fist0 = isFist(h0);
+
+      // trained classifier prediction on primary hand
+      const feats = normalizeLandmarks(h0);
+      const pred = mlpPredict(feats);
+      let gestureName = null;
+      let conf = 0;
+      if (pred) {
+        gestureName = pred.label; conf = pred.conf;
+      } else {
+        // rule-based
+        if (fist0) { gestureName = 'fist'; conf = 0.9; }
+        else if (fc0 === 0) { gestureName = 'fist'; conf = 0.8; }
+        else if (fc0 === 1) { gestureName = 'one'; conf = 0.85; }
+        else if (fc0 === 2) { gestureName = 'two'; conf = 0.85; }
+        else if (fc0 === 3) { gestureName = 'three'; conf = 0.85; }
+        else if (fc0 === 4) { gestureName = 'four'; conf = 0.85; }
+        else if (fc0 === 5) { gestureName = 'open'; conf = 0.85; }
+      }
+      // pinch
+      const pinch = pinchDist(h0);
+      document.getElementById('hud-pinch').textContent = pinch.toFixed(3);
+
+      // built-in gesture recognizer results
+      let mpGesture = null;
+      // (we run gestureRecognizer separately; store last)
+      if (window._lastMpGesture) mpGesture = window._lastMpGesture;
+
+      // debouncing
+      if (gestureName === lastGesture) { gestureHoldCount++; }
+      else { lastGesture = gestureName; gestureHoldCount = 1; }
+
+      // index fingertip attraction
+      if (controlMode === 'gesture') {
+        const tip = h0[8];
+        gestureMouseActive = true;
+        mouse2D.x = (1 - tip.x) * 2 - 1;
+        mouse2D.y = -(tip.y * 2 - 1);
+      }
+
+      // pinch -> zoom + particle size
+      if (controlMode === 'gesture') {
+        const zoom = 4 + (1 - Math.min(1, pinch/0.15)) * 12; // close pinch -> zoom in
+        camera.position.z = THREE.MathUtils.lerp(camera.position.z, zoom, 0.1);
+        mat.uniforms.uParticleSize.value = THREE.MathUtils.lerp(mat.uniforms.uParticleSize.value, 1.5 + (1 - Math.min(1, pinch/0.15)) * 2.5, 0.1);
+      }
+
+      // fist -> burst
+      if (fist0 && gestureHoldCount >= HOLD_FRAMES) {
+        if (!window._bursting) {
+          window._bursting = true;
+          mat.uniforms.uBurstStrength.value = 1;
+          const fade = () => { mat.uniforms.uBurstStrength.value *= 0.88; if (mat.uniforms.uBurstStrength.value > 0.01) requestAnimationFrame(fade); else { mat.uniforms.uBurstStrength.value = 0; window._bursting = false; } };
+          setTimeout(fade, 120);
+        }
+      }
+
+      // swipe detection (wrist x)
+      const wrist = h0[0];
+      swipeHistory.push({ t, x: wrist.x });
+      if (swipeHistory.length > 12) swipeHistory.shift();
+      if (swipeHistory.length >= 8) {
+        const first = swipeHistory[0], last = swipeHistory[swipeHistory.length-1];
+        const dx = last.x - first.x;
+        const dtw = last.t - first.t;
+        if (dtw < 400 && Math.abs(dx) > 0.25) {
+          if (dx < 0) { shapeIndex = (shapeIndex + 1) % SHAPES_LIST.length; tryShapeChange(SHAPES_LIST[shapeIndex], 'swipe'); }
+          else { shapeIndex = (shapeIndex - 1 + SHAPES_LIST.length) % SHAPES_LIST.length; tryShapeChange(SHAPES_LIST[shapeIndex], 'swipe'); }
+          swipeHistory = [];
+        }
+      }
+
+      // circle motion detection (wrist path)
+      circleHistory.push({ x: wrist.x, y: wrist.y });
+      if (circleHistory.length > 30) circleHistory.shift();
+      if (circleHistory.length >= 20) {
+        // compute centroid and radius variance
+        let cxm = 0, cym = 0;
+        for (const pt of circleHistory) { cxm += pt.x; cym += pt.y; }
+        cxm /= circleHistory.length; cym /= circleHistory.length;
+        let rsum = 0, rvar = 0;
+        const rs = circleHistory.map(pt => Math.hypot(pt.x-cxm, pt.y-cym));
+        const rmean = rs.reduce((s,v)=>s+v,0)/rs.length;
+        for (const r of rs) rvar += (r-rmean)*(r-rmean);
+        rvar /= rs.length;
+        // angular coverage
+        const angs = circleHistory.map(pt => Math.atan2(pt.y-cym, pt.x-cxm));
+        let coverage = 0;
+        for (let i = 1; i < angs.length; i++) { let d = angs[i]-angs[i-1]; if (d > Math.PI) d -= 2*Math.PI; if (d < -Math.PI) d += 2*Math.PI; coverage += Math.abs(d); }
+        if (rvar < 0.002 && coverage > Math.PI*1.5) {
+          // rotate cloud
+          controls.autoRotate = true;
+          controls.autoRotateSpeed = 1.5;
+          setTimeout(() => { controls.autoRotateSpeed = guiParams.rotateSpeed; }, 1500);
+          circleHistory = [];
+        }
+      }
+
+      // open palm movement -> rotate cloud
+      if (fc0 === 5) {
+        // velocity
+        if (swipeHistory.length >= 2) {
+          const a = swipeHistory[swipeHistory.length-2], b = swipeHistory[swipeHistory.length-1];
+          const vx = (b.x - a.x);
+          controls.autoRotateSpeed = guiParams.rotateSpeed + vx * 8;
+        }
+      }
+
+      // two hands
+      if (hands.length >= 2) {
+        const w0 = smoothed[0][0], w1 = smoothed[1][0];
+        const handDist = Math.hypot(w0.x-w1.x, w0.y-w1.y);
+        // scale shape
+        mat.uniforms.uScale.value = THREE.MathUtils.lerp(mat.uniforms.uScale.value, 0.5 + handDist * 4, 0.1);
+        // left hand picks shape (use handedness)
+        // identify left hand
+        let leftHand = null, rightHand = null;
+        for (let i = 0; i < hands.length; i++) {
+          const hd = (handednesses[i] && handednesses[i][0]) ? handednesses[i][0].categoryName : 'Right';
+          if (hd === 'Left') leftHand = smoothed[i]; else rightHand = smoothed[i];
+        }
+        if (leftHand) {
+          const lfc = countFingers(leftHand, 'Left');
+          const leftShapeMap = { 0:'love', 1:'cube', 2:'star', 3:'circle', 4:'flower', 5:'galaxy' };
+          const ls = leftShapeMap[Math.min(5, lfc)];
+          if (ls && gestureHoldCount >= HOLD_FRAMES) {
+            // only change occasionally
+            if (performance.now() - lastShapeChange > COOLDOWN) {
+              tryShapeChange(ls, 'twohands');
+            }
+          }
+        }
+        if (rightHand) {
+          const rfc = countFingers(rightHand, 'Right');
+          // physics interaction strength based on finger count
+          mat.uniforms.uInteraction.value = THREE.MathUtils.lerp(mat.uniforms.uInteraction.value, (rfc/5)*2 - 1, 0.1);
+        }
+      } else {
+        mat.uniforms.uScale.value = THREE.MathUtils.lerp(mat.uniforms.uScale.value, 1.0, 0.1);
+      }
+
+      // shape mapping on gesture hold
+      if (controlMode === 'gesture' && gestureHoldCount >= HOLD_FRAMES) {
+        const now = performance.now();
+        if (now - lastShapeChange >= COOLDOWN) {
+          let shape = null;
+          const g = gestureName;
+          // map built-in mp gesture
+          if (mpGesture) {
+            if (mpGesture === 'Thumb_Up') shape = 'cone';
+            else if (mpGesture === 'Victory') shape = 'ring';
+            else if (mpGesture === 'Open_Palm') shape = 'galaxy';
+            else if (mpGesture === 'Closed_Fist') shape = 'love';
+            else if (mpGesture === 'Pointing_Up') shape = 'cube';
+          }
+          if (!shape) {
+            if (g === 'fist') shape = 'love';
+            else if (g === 'one') shape = 'cube';
+            else if (g === 'two') shape = 'star';
+            else if (g === 'three') shape = 'circle';
+            else if (g === 'four') shape = 'flower';
+            else if (g === 'open' || g === 'five') shape = 'galaxy';
+            else if (g === 'thumbs_up') shape = 'cone';
+            else if (g === 'peace') shape = 'ring';
+            else if (g === 'point') shape = 'cube';
+          }
+          if (shape && g !== lastTriggeredGesture) {
+            lastTriggeredGesture = g;
+            tryShapeChange(shape, 'gesture');
+          }
+        }
+      }
+      // reset trigger when gesture changes
+      if (gestureName !== lastTriggeredGesture && gestureHoldCount < HOLD_FRAMES) {
+        // keep
+      }
+
+      // gesture-to-text mode
+      if (gestureToTextMode && gestureHoldCount === HOLD_FRAMES) {
+        const ch = signToChar[gestureName];
+        if (ch && (performance.now() - lastCharTime > 800)) {
+          spelledWord += ch;
+          lastCharTime = performance.now();
+          document.getElementById('gesture-to-text').textContent = 'Spelling: ' + spelledWord;
+        }
+      }
+
+      // hysteresis: update lastFingerCount
+      lastFingerCount = fc0;
+
+      // HUD updates
+      document.getElementById('hud-gesture').textContent = gestureName || '—';
+      document.getElementById('hud-conf').textContent = conf ? (conf*100).toFixed(0)+'%' : '—';
+      setGestureLabel((gestureName || 'detecting') + (conf ? ' ' + (conf*100).toFixed(0)+'%' : ''));
+    }
+
+    let lastTriggeredGesture = null;
+    let lastCharTime = 0;
+
+    // ---------- MediaPipe setup ----------
+    async function initMediaPipe() {
+      try {
+        camStatus.style.display = 'block';
+        camStatus.textContent = 'Loading MediaPipe models (GPU)...';
+        const vision = await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm');
+        handLandmarker = await HandLandmarker.createFromOptions(vision, {
+          baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task', delegate: 'GPU' },
+          runningMode: 'VIDEO', numHands: 2
+        });
+        gestureRecognizer = await GestureRecognizer.createFromOptions(vision, {
+          baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task', delegate: 'GPU' },
+          runningMode: 'VIDEO', numHands: 2
+        });
+        camStatus.textContent = 'Models loaded. Starting camera...';
+        await startCamera();
+      } catch (e) {
+        camStatus.textContent = 'MediaPipe load failed: ' + e.message;
+        console.error(e);
+      }
+    }
+
+    async function startCamera() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+        video.srcObject = stream;
+        await video.play();
+        cameraReady = true;
+        document.getElementById('enable-cam-btn').style.display = 'none';
+        camStatus.textContent = 'Camera active';
+        setTimeout(() => { camStatus.style.display = 'none'; }, 2000);
+        // start detection loop
+        detectionLoop();
+      } catch (e) {
+        camStatus.textContent = 'Camera blocked: ' + e.message;
+      }
+    }
+
+    document.getElementById('enable-cam-btn').addEventListener('click', initMediaPipe);
+
+    // ---------- Detection loop (~30 FPS) ----------
+    let lastDetection = 0;
+    const DETECTION_INTERVAL = 33; // ms
+    let detectionFpsCount = 0, detectionFpsLast = 0, detectionFps = 0;
+    async function detectionLoop() {
+      if (!cameraReady) return;
+      const now = performance.now();
+      if (now - lastDetection >= DETECTION_INTERVAL) {
+        lastDetection = now;
+        if (video.readyState >= 2) {
+          try {
+            const res = handLandmarker.detectForVideo(video, now);
+            // gesture recognizer
+            let gr = null;
+            try { gr = gestureRecognizer.recognizeForVideo(video, now); } catch(e){}
+            if (gr && gr.gestures && gr.gestures.length) {
+              const g0 = gr.gestures[0];
+              if (g0 && g0.length) window._lastMpGesture = g0[0].categoryName;
+            } else {
+              window._lastMpGesture = null;
+            }
+            const t0 = performance.now();
+            processHands(res, now);
+            const lat = performance.now() - t0;
+            document.getElementById('hud-lat').textContent = lat.toFixed(1);
+            detectionFpsCount++;
+            if (now - detectionFpsLast > 1000) { detectionFps = detectionFpsCount; detectionFpsCount = 0; detectionFpsLast = now; }
+            document.getElementById('hud-dfps').textContent = detectionFps;
+          } catch (e) {
+            console.error('detect error', e);
+          }
+        }
+      }
+      setTimeout(detectionLoop, 1);
+    }
+
+    // ---------- Render loop ----------
+    const clock = new THREE.Clock();
+    let lowFps = 0, optimized = false, frameCount = 0, lastFpsTime = 0;
+    let renderFps = 0;
+    function tick() {
+      requestAnimationFrame(tick);
+      const dt = clock.getDelta(), el = clock.getElapsedTime();
+      mat.uniforms.uTime.value = el;
+      if (window._starMat) window._starMat.uniforms.uTime.value = el;
+      frameCount++;
+      if (el - lastFpsTime > 1) {
+        renderFps = frameCount;
+        document.getElementById('ci-fps').textContent = frameCount;
+        document.getElementById('hud-fps').textContent = frameCount;
+        frameCount = 0; lastFpsTime = el;
+      }
+      const normal = new THREE.Vector3(0,0,1).applyQuaternion(camera.quaternion);
+      iPlane.setFromNormalAndCoplanarPoint(normal, new THREE.Vector3());
+      raycaster.setFromCamera(mouse2D, camera);
+      raycaster.ray.intersectPlane(iPlane, mouse3D);
+      mat.uniforms.uMouse3D.value.lerp(mouse3D, 0.1);
+      if (!optimized && guiParams.autoOptimize) {
+        if (dt > .033) { lowFps++; if (lowFps > 60) { renderer.setPixelRatio(1); afterimg.enabled = false; optimized = true; } }
+        else lowFps = 0;
+      }
+      if (morphing) {
+        const t = Math.min((performance.now() / 1000 - morphStart) / DURATION, 1);
+        mat.uniforms.uProgress.value = t;
+        const pct = Math.round(Math.min(spring(t), 1) * 100);
+        progressBar.style.width = pct + '%';
+        statusTextEl.textContent = `Morphing → ${morphLabel} ${pct}%`;
+        if (t >= 1) {
+          morphing = false;
+          statusTextEl.textContent = 'Coherence Achieved ✓';
+          statusEl.classList.remove('morphing');
+          progressWrap.classList.remove('active');
+          progressBar.style.width = '0%';
+          setTimeout(() => { if (!morphing) statusTextEl.textContent = 'System Stable'; }, 2200);
+        }
+      }
+      controls.update();
+      composer.render();
+    }
+    tick();
+    setTimeout(() => morphTo('circle'), 600);
+
+    // ---------- UI handlers ----------
+    document.getElementById('morph-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const v = document.getElementById('text-input').value.trim();
+      if (v) { morphTo(v); document.getElementById('text-input').value = ''; }
+    });
+    document.querySelectorAll('.shape-btn').forEach(btn => {
+      btn.addEventListener('click', () => morphTo(btn.dataset.shape));
+    });
+    window.addEventListener('resize', () => {
+      const w = innerWidth, h = innerHeight;
+      camera.aspect = w / h; camera.updateProjectionMatrix();
+      renderer.setSize(w, h); composer.setSize(w, h);
+    });
+
+    // control mode toggle
+    document.getElementById('btn-toggle-control').addEventListener('click', () => {
+      controlMode = controlMode === 'mouse' ? 'gesture' : 'mouse';
+      document.getElementById('ci-mode').textContent = controlMode === 'mouse' ? 'Mouse' : 'Gesture';
+      if (controlMode === 'mouse') { gestureMouseActive = false; }
+    });
+
+    // record sample
+    const recordedSamples = JSON.parse(localStorage.getItem('cv_samples') || '[]');
+    document.getElementById('btn-record').addEventListener('click', () => {
+      if (!cameraReady) { alert('Enable camera first'); return; }
+      // record current smoothed? We'll record last hand landmarks from process? Simpler: store a snapshot via global lastHand
+      if (!window._lastHand) { alert('No hand detected'); return; }
+      const label = document.getElementById('record-label').value;
+      const feats = normalizeLandmarks(window._lastHand);
+      recordedSamples.push({ label, features: feats, t: Date.now() });
+      localStorage.setItem('cv_samples', JSON.stringify(recordedSamples));
+      document.getElementById('model-status').textContent = `Recorded ${recordedSamples.length} samples`;
+    });
+    // track last hand
+    const origProcess = processHands;
+    // wrap to store
+    // monkeypatch inside processHands already? We'll set in processHands by adding:
+    // (patch below via redefining? Instead set window._lastHand in processHands)
+    // We'll edit processHands? It's defined; add assignment at start:
+    // Already not; add now by overriding? We'll just set in detection? Instead modify: call store in loop.
+    // We'll add a global setter inside processHands by redefining? Too late. Use interval? Simpler: store in processHands via edit not possible now.
+    // We'll instead set window._lastHand inside processHands by monkeypatching the function reference? Function already defined. Let's just reassign processHands wrapper:
+    const _origProcessHands = processHands;
+    // can't redeclare const; use new function wrapper by replacing global? processHands is function declaration (hoisted) but const? It's function decl. We can reassign.
+    // Actually processHands defined with `function`, so reassignable.
+    window.processHandsOverride = function(results, t) {
+      if (results.landmarks && results.landmarks.length) {
+        // smooth not stored; store raw normalized later; store raw landmarks
+        window._lastHand = results.landmarks[0].map(p => ({x:p.x,y:p.y,z:p.z}));
+      }
+      return _origProcessHands(results, t);
+    };
+    // replace calls: detectionLoop calls processHands; we need it to call override. We'll just rename usage by overriding global processHands.
+    // Since function declaration, assign:
+    // (already invoked by name in detectionLoop; reassign global)
+    // eslint-disable-next-line
+    processHands = window.processHandsOverride;
+
+    // export samples
+    document.getElementById('btn-record').insertAdjacentHTML('afterend', '<button id="btn-export-samples">Export Samples JSON</button>');
+    document.getElementById('btn-export-samples').addEventListener('click', () => {
+      const blob = new Blob([JSON.stringify(recordedSamples)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = 'samples.json'; a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    // gesture-to-text mode toggle
+    document.getElementById('btn-g2t').addEventListener('click', () => {
+      gestureToTextMode = !gestureToTextMode;
+      if (!gestureToTextMode) { spelledWord = ''; document.getElementById('gesture-to-text').textContent = ''; }
+      else { document.getElementById('gesture-to-text').textContent = 'Spelling: '; }
+    });
+    // morph spelled word
+    document.getElementById('gesture-to-text').addEventListener('dblclick', () => {
+      if (spelledWord) { morphTo(spelledWord); spelledWord = ''; document.getElementById('gesture-to-text').textContent = ''; }
+    });
+
+    // eval panel
+    const evalPanel = document.getElementById('eval-panel');
+    document.getElementById('btn-eval').addEventListener('click', () => {
+      evalPanel.style.display = evalPanel.style.display === 'none' ? 'block' : 'none';
+    });
+    const evalData = []; // {target, predicted}
+    let evalActive = false, evalTarget = null;
+    document.getElementById('eval-start').addEventListener('click', () => {
+      evalTarget = document.getElementById('eval-target').value;
+      evalActive = true;
+      document.getElementById('eval-status').textContent = 'Trial active for: ' + evalTarget + ' (perform gesture)';
+      // auto capture after 2s
+      setTimeout(() => {
+        if (evalActive) {
+          evalData.push({ target: evalTarget, predicted: lastGesture });
+          evalActive = false;
+          document.getElementById('eval-status').textContent = 'Captured: ' + lastGesture;
+          updateEvalTable();
+        }
+      }, 2000);
+    });
+    document.getElementById('eval-clear').addEventListener('click', () => { evalData.length = 0; updateEvalTable(); });
+    document.getElementById('eval-export').addEventListener('click', () => {
+      // build CSV
+      const rows = ['target,predicted'];
+      for (const d of evalData) rows.push(d.target + ',' + d.predicted);
+      const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = 'eval.csv'; a.click();
+      URL.revokeObjectURL(url);
+    });
+    function updateEvalTable() {
+      const tbody = document.querySelector('#eval-table tbody');
+      tbody.innerHTML = '';
+      const gestures = [...new Set(evalData.map(d => d.target))];
+      for (const g of gestures) {
+        const subset = evalData.filter(d => d.target === g);
+        const correct = subset.filter(d => d.predicted === g).length;
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${g}</td><td>${subset.length}</td><td>${correct}</td><td>${(correct/subset.length*100).toFixed(1)}</td>`;
+        tbody.appendChild(tr);
+      }
+      // confusion matrix summary
+      const cm = document.getElementById('eval-cm');
+      const labels = [...new Set(evalData.map(d=>d.target))];
+      if (labels.length) {
+        let html = 'Confusion (rows actual, cols pred):<br>';
+        html += ' &nbsp;' + labels.map(l=>l.slice(0,3)).join(' ') + '<br>';
+        for (const a of labels) {
+          const row = labels.map(p => evalData.filter(d=>d.target===a && d.predicted===p).length).join(' ');
+          html += a.slice(0,3) + ' ' + row + '<br>';
+        }
+        cm.innerHTML = html;
+      }
+    }
+  </script>
+</body>
+</html>
