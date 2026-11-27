@@ -866,8 +866,13 @@ void main(){
     const clock = new THREE.Clock();
     let lowFps = 0, optimized = false, frameCount = 0, lastFpsTime = 0;
     let renderFps = 0;
+    const MAX_RENDER_FPS = 165;
+    let lastRenderTime = 0;
     function tick() {
       requestAnimationFrame(tick);
+      const now = performance.now();
+      if (now - lastRenderTime < 1000 / MAX_RENDER_FPS) return;
+      lastRenderTime = now;
       const dt = clock.getDelta(), el = clock.getElapsedTime();
       mat.uniforms.uTime.value = el;
       if (window._starMat) window._starMat.uniforms.uTime.value = el;
@@ -967,6 +972,9 @@ void main(){
     // eslint-disable-next-line
     processHands = window.processHandsOverride;
     window.processHands = processHands;
+    window.camera = camera;
+    window.mat = mat;
+    window.setControlMode = (m) => { controlMode = m; gestureMouseActive = (m === 'gesture'); document.getElementById('ci-mode').textContent = m === 'mouse' ? 'Mouse' : 'Gesture'; };
 
     // export samples
     document.getElementById('btn-record').insertAdjacentHTML('afterend', '<button id="btn-export-samples">Export Samples JSON</button>');
