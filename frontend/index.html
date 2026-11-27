@@ -54,7 +54,7 @@
     #cv-panel button.active { background: rgba(244,114,182,0.35); border-color: rgba(244,114,182,0.6); }
     #cv-panel select { background: rgba(0,0,0,0.4); color: #fff; border: 1px solid var(--glass-border); border-radius: 6px; padding: 4px; font-family: 'Space Mono', monospace; font-size: 10px; }
     #landmark-canvas { position: fixed; bottom: 20px; right: 20px; z-index: 15; width: 200px; height: 150px; border: 1px solid var(--glass-border); border-radius: 10px; background: rgba(0,0,0,0.6); }
-    #webcam { display: none; }
+    #webcam { position: fixed; left: -9999px; top: -9999px; width: 640px; height: 480px; }
     #enable-cam-btn { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); z-index: 30; background: linear-gradient(135deg, rgba(167,139,250,0.9), rgba(244,114,182,0.9)); border: none; color: #fff; font-family: 'Space Grotesk', sans-serif; font-weight: 600; font-size: 16px; padding: 16px 32px; border-radius: 14px; cursor: pointer; box-shadow: 0 8px 40px rgba(167,139,250,0.4); }
     #enable-cam-btn:hover { filter: brightness(1.15); }
     #cam-status { position: fixed; top: 70px; left: 50%; transform: translateX(-50%); z-index: 20; font-family: 'Space Mono', monospace; font-size: 11px; color: rgba(255,255,255,0.6); background: var(--glass); padding: 6px 12px; border-radius: 8px; }
@@ -767,23 +767,34 @@ void main(){
         try {
           handLandmarker = await HandLandmarker.createFromOptions(vision, {
             baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task', delegate },
-            runningMode: 'VIDEO', numHands: 2
+            runningMode: 'VIDEO', numHands: 2,
+          minHandDetectionConfidence: 0.3,
+          minHandPresenceConfidence: 0.3,
+          minTrackingConfidence: 0.3
           });
         } catch (e) {
           delegate = 'CPU';
           handLandmarker = await HandLandmarker.createFromOptions(vision, {
             baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task', delegate },
-            runningMode: 'VIDEO', numHands: 2
+            runningMode: 'VIDEO', numHands: 2,
+          minHandDetectionConfidence: 0.3,
+          minHandPresenceConfidence: 0.3,
+          minTrackingConfidence: 0.3
           });
         }
         try {
           gestureRecognizer = await GestureRecognizer.createFromOptions(vision, {
             baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task', delegate },
-            runningMode: 'VIDEO', numHands: 2
+            runningMode: 'VIDEO', numHands: 2,
+          minHandDetectionConfidence: 0.3,
+          minHandPresenceConfidence: 0.3,
+          minTrackingConfidence: 0.3
           });
         } catch (e) {
           gestureRecognizer = null;
         }
+        window.handLandmarker = handLandmarker;
+        window.gestureRecognizer = gestureRecognizer;
         camStatus.textContent = 'Models loaded. Starting camera...';
         await startCamera();
       } catch (e) {
