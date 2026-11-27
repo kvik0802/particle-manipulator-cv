@@ -389,16 +389,39 @@ void main(){
       document.querySelectorAll('.shape-btn').forEach(b => { b.classList.toggle('active', b.dataset.shape === k); });
       if (SHAPE_COLORS[k] !== undefined) { mat.uniforms.uTargetColor.value.set(SHAPE_COLORS[k]); guiParams.orbColor = '#' + mat.uniforms.uTargetColor.value.getHexString(); if (typeof orbCtrl !== 'undefined' && orbCtrl) orbCtrl.updateDisplay(); }
       else { mat.uniforms.uTargetColor.value.set(guiParams.orbColor); }
-      bloom.strength = 0.5;
+      afterimg.enabled = false;
+      bloom.strength = 0.25;
+      const prevPixelRatio = renderer.getPixelRatio();
+      renderer.setPixelRatio(Math.min(prevPixelRatio, 1));
+      window._morphPrevPixelRatio = prevPixelRatio;
+      statusTextEl.textContent = `Preparing → ${word.toUpperCase()}...`;
+      statusEl.classList.add('morphing');
       const target = getTarget(word);
       const sa = geo.attributes.aStart, ea = geo.attributes.aEnd;
       const cp = mat.uniforms.uProgress.value;
-      for (let i = 0; i < N; i++) { const ix = i * 3, stg = delays[i] * .3, rp = Math.max(0, Math.min(1, (cp - stg) / (1 - stg))), p = spring(rp); sa.array[ix] = sa.array[ix] + (ea.array[ix] - sa.array[ix]) * p; sa.array[ix+1] = sa.array[ix+1] + (ea.array[ix+1] - sa.array[ix+1]) * p; sa.array[ix+2] = sa.array[ix+2] + (ea.array[ix+2] - sa.array[ix+2]) * p; ea.array[ix] = target[ix]; ea.array[ix+1] = target[ix+1]; ea.array[ix+2] = target[ix+2]; }
-      sa.needsUpdate = true; ea.needsUpdate = true;
-      mat.uniforms.uProgress.value = 0;
-      morphing = true; morphStart = performance.now() / 1000; morphLabel = word.toUpperCase();
-      statusTextEl.textContent = `Morphing → ${morphLabel}`;
-      statusEl.classList.add('morphing'); progressWrap.classList.add('active');
+      const CHUNK = 15000;
+      let i = 0;
+      function processChunk() {
+        const end = Math.min(i + CHUNK, N);
+        for (; i < end; i++) {
+          const ix = i * 3, stg = delays[i] * .3, rp = Math.max(0, Math.min(1, (cp - stg) / (1 - stg))), p = spring(rp);
+          sa.array[ix] = sa.array[ix] + (ea.array[ix] - sa.array[ix]) * p;
+          sa.array[ix+1] = sa.array[ix+1] + (ea.array[ix+1] - sa.array[ix+1]) * p;
+          sa.array[ix+2] = sa.array[ix+2] + (ea.array[ix+2] - sa.array[ix+2]) * p;
+          ea.array[ix] = target[ix]; ea.array[ix+1] = target[ix+1]; ea.array[ix+2] = target[ix+2];
+        }
+        if (i < N) {
+          statusTextEl.textContent = `Preparing → ${word.toUpperCase()}... ${Math.round(i / N * 100)}%`;
+          requestAnimationFrame(processChunk);
+        } else {
+          sa.needsUpdate = true; ea.needsUpdate = true;
+          mat.uniforms.uProgress.value = 0;
+          morphing = true; morphStart = performance.now() / 1000; morphLabel = word.toUpperCase();
+          statusTextEl.textContent = `Morphing → ${morphLabel}`;
+          progressWrap.classList.add('active');
+        }
+      }
+      requestAnimationFrame(processChunk);
     }
 
     // ---------- CV STATE ----------
@@ -904,6 +927,10 @@ void main(){
           statusEl.classList.remove('morphing');
           progressWrap.classList.remove('active');
           progressBar.style.width = '0%';
+          // restore performance settings
+          afterimg.enabled = true;
+          bloom.strength = 0.5;
+          if (window._morphPrevPixelRatio) renderer.setPixelRatio(Math.min(window._morphPrevPixelRatio, 2));
           setTimeout(() => { if (!morphing) statusTextEl.textContent = 'System Stable'; }, 2200);
         }
       }
@@ -972,6 +999,7 @@ void main(){
     // eslint-disable-next-line
     processHands = window.processHandsOverride;
     window.processHands = processHands;
+    window.morphTo = morphTo;
     window.camera = camera;
     window.mat = mat;
     window.setControlMode = (m) => { controlMode = m; gestureMouseActive = (m === 'gesture'); document.getElementById('ci-mode').textContent = m === 'mouse' ? 'Mouse' : 'Gesture'; };
